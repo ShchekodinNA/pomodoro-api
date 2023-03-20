@@ -1,0 +1,8 @@
+# Basic staff
+.vscode
+.env
+venv/
+
+# Pycache 
+__pycache__/
+*.pyc
