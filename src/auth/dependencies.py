@@ -6,7 +6,7 @@ from .schemas import UserSchemas
 from fastapi import Depends, status, HTTPException
 from jose import jwt, JWTError
 
-async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> UserSchemas.UserBase:
+async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> UserSchemas.Get:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -27,7 +27,7 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> Use
     return current_user
 
 
-async def get_current_user_if_active(user: UserSchemas.UserBase = Depends(get_current_user)) -> UserSchemas.UserBase:
+async def get_current_user_if_active(user: UserSchemas.Get = Depends(get_current_user)) -> UserSchemas.Get:
     if user.is_active:
         return user
     raise HTTPException(status.HTTP_401_UNAUTHORIZED)

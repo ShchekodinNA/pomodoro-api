@@ -21,8 +21,8 @@ async def authenticate(form_data: OAuth2PasswordRequestForm = Depends()):
 
 
 @auth_router.post('/update_password')
-async def update_password(update_user: UserSchemas.UpdateUserPassword,
-                   user: UserSchemas.UserBase = Depends(get_current_user_if_active)):
+async def update_password(update_user: UserSchemas.FormPasswordChange,
+                   user: UserSchemas.Get = Depends(get_current_user_if_active)):
     with SessionLocal() as session:
         crud = UserDBCRUD(session)
         authenticator = Authenticator(crud)
@@ -33,6 +33,6 @@ async def update_password(update_user: UserSchemas.UpdateUserPassword,
 
 
 @auth_router.post('/test')
-async def login(user: UserSchemas.UserBase = Depends(get_current_user_if_active)):
+async def login(user: UserSchemas.Get = Depends(get_current_user_if_active)):
     pass
     return user

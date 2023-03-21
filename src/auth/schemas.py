@@ -2,29 +2,33 @@ from pydantic import BaseModel, Field
 
 
 password_field = Field(max_length=40, min_length=6)
+username_field = Field(
+    regex=r"(?![_.])(?!.*[_.]{2})[a-zA-Z0-9._]+(?<![_.])$", max_length=20, min_length=5)
+
 
 class UserSchemas:
-    class _ActiveUser(BaseModel):
-        is_active: bool = True
-    
-    class _UserPassword(BaseModel):
-        password: str = password_field
-    
-    class UserBase(_ActiveUser):
-        """Read, Delete"""
-        username: str = Field(regex=r"(?![_.])(?!.*[_.]{2})[a-zA-Z0-9._]+(?<![_.])$", max_length=20, min_length=5)
+    class Get(BaseModel):
+        id: int
+        username: str
         email: str
-        
-        
-    class CreateUser(UserBase):
-        """Create"""
-        
-    
-    class AuthenticateUser(UserBase):
-        hashed_password: str
+        is_active: bool
 
-    class UpdateUserPassword(_UserPassword):
-        """Update"""
-        new_password: str = password_field
-    
+    class Create(BaseModel):
+        username: str
+        email: str
+        is_active: bool
+        password: str = password_field
+
+    class Update(BaseModel):
+        id: int
+        username: str
+        email: str
+        is_active: str
+        password: str = password_field
+
+    class Delete(BaseModel):
+        id: str
         
+    class FormPasswordChange(BaseModel):
+        old_password: str = password_field
+        new_password: str = password_field
