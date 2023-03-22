@@ -2,9 +2,13 @@ from unittest import TestCase
 from src.auth.utils import UserCrud, secret_manager, UserDBCRUD
 from src.auth.schemas import UserSchemas
 from src.auth.service import Authenticator
+from src.auth.models import User
+from src.auth.exceptions import HTTPException400
+from src.main import app
 from fastapi import HTTPException, status
 from pydantic.error_wrappers import ValidationError
 from ..database import SessionLocal
+from fastapi.testclient import TestClient
 
 
 class MockUserCrud(UserCrud):
@@ -57,10 +61,12 @@ class AuthTest(TestCase):
         self.assertNotEqual(authentication_result, None)
 
     def test_incorrect_authentication(self):
-
-        authentication_result = self.authenticator.get_auth_token_or_none(
-            self.username1, 'saass')
-        self.assertEqual(authentication_result, None)
+        try:
+            authentication_result = self.authenticator.get_auth_token_or_none(
+                self.username1, 'saass')
+            raise TypeError('It must be unreacheble')
+        except HTTPException as exc:
+            self.assertEqual(exc.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_unexistsing_user(self):
         try:
@@ -79,19 +85,91 @@ class AuthTest(TestCase):
             is_active=True,
             id=1
         )
-        self.authenticator.change_user_password(new_password_form, current_user)
-        
+        self.authenticator.change_user_password(
+            new_password_form, current_user)
+
         current_user_from_db = self.mock_db[current_user.username]
         for key, value in current_user.dict().items():
             if key in current_user_from_db:
                 self.assertEqual(value, current_user_from_db[key])
-        self.assertNotEqual(current_user_from_db['hashed_password'], self.hashedpass1)
+        self.assertNotEqual(
+            current_user_from_db['hashed_password'], self.hashedpass1)
 
 
 class TestDBCRUD(TestCase):
     def setUp(self) -> None:
         self.session = SessionLocal()
         self.crud = UserDBCRUD(self.session)
-        
+        self.user1 = User(
+            username='someusername',
+            email='some@email.com',
+            hashed_password='does not matter',
+            is_active=True
+        )
+        self.session.add(self.user1)
+        self.session.commit()
+
     def tearDown(self) -> None:
+        self.session.delete(self.user1)
+        self.session.commit()
         self.session.close()
+
+    def test_get_user_by_username(self):
+        retrived_user: UserSchemas.Get = self.crud.get_user_by_username(
+            self.user1.username)
+
+        inputed_dict = self.user1.__dict__
+        for key, value in retrived_user.dict().items():
+            if key in inputed_dict:
+                self.assertEqual(value, inputed_dict[key])
+
+    def test_get_user_by_username_incorrect(self):
+        with self.assertRaises(HTTPException):
+            retrived_user: UserSchemas.Get = self.crud.get_user_by_username(
+                'NOT EXISTENT SHIT')
+
+    def test_get_hashed_password(self):
+        hashed_password: str = self.crud.get_user_hashed_password_from_username(
+            self.user1.username)
+        self.assertEqual(self.user1.hashed_password, hashed_password)
+
+    def test_get_hashed_password_incorrect(self):
+        with self.assertRaises(HTTPException):
+            hahed_password: str = self.crud.get_user_hashed_password_from_username(
+                'NOT EXISTENT SHIT')
+
+
+class TestEndpoints(TestCase):
+    def setUp(self) -> None:
+        self.client = TestClient(app)
+        self.session = SessionLocal()
+        self.plain_password1 = 'doesmatter'
+        self.hashed_password1 = secret_manager.hash_secret(
+            self.plain_password1)
+        self.user1 = User(
+            username='someusername',
+            email='some@email.com',
+            hashed_password=self.hashed_password1,
+            is_active=True
+        )
+        self.session.add(self.user1)
+        self.session.commit()
+
+    def tearDown(self) -> None:
+        self.session.delete(self.user1)
+        self.session.commit()
+        self.session.close()
+
+    def test_authenticate(self):
+        response = self.client.post(
+            '/authorization',
+            data={
+                'username': self.user1.username,
+                'password': self.plain_password1,
+                'grant_type': self.plain_password1
+            },
+            headers={"content-type": "application/x-www-form-urlencoded"}
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        dict_response = response.json()
+        pass

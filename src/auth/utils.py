@@ -7,6 +7,7 @@ from . import models
 from .schemas import UserSchemas
 from .models import User
 from .constants import security_env
+from .exceptions import HTTPException400
 from jose import jwt
 
 
@@ -24,7 +25,7 @@ class _SecretController:
         return self.pwd_context.verify(peppered_password, hashed_secret)
 
     def generate_jwt_token(self, body: dict,
-                            expires_delta: timedelta = timedelta(minutes=15)) -> str:
+                           expires_delta: timedelta = timedelta(minutes=15)) -> str:
         body_to_encode = body.copy()
         expire = datetime.utcnow() + expires_delta
         body_to_encode.update({'exp': expire})
@@ -68,12 +69,16 @@ class UserDBCRUD(UserCrud):
     def get_user_by_username(self, username: str) -> UserSchemas.Get:
         current_user = self.current_session.query(models.User).filter(
             models.User.username == username).first()
+        if current_user is None:
+            raise HTTPException400
         user_to_return = UserSchemas.Get(**current_user.__dict__)
         return user_to_return
 
     def get_user_hashed_password_from_username(self, username: str) -> str:
         current_user = self.current_session.query(models.User).filter(
             models.User.username == username).first()
+        if current_user is None:
+            raise HTTPException400
         return current_user.hashed_password
 
     def save_user(self, user_to_save: UserSchemas.Update) -> None:
