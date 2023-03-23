@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from .service import Authenticator
+from .exceptions import HTTPException401
 from ..database import SessionLocal
 from .schemas import UserSchemas
 from .utils import UserDBCRUD
@@ -13,10 +14,13 @@ async def authenticate(form_data: OAuth2PasswordRequestForm = Depends()):
     with SessionLocal() as session:
         crud = UserDBCRUD(session)
         authenticator = Authenticator(crud)
-        token = authenticator.get_auth_token_or_none(
-            form_data.username, form_data.password)
+        try:
+            token = authenticator.get_auth_token_or_none(
+                form_data.username, form_data.password)
+        except HTTPException:
+            raise HTTPException401
     if not token:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED)
+        raise HTTPException401
     return token
 
 
@@ -27,12 +31,6 @@ async def update_password(update_user: UserSchemas.FormPasswordChange,
         crud = UserDBCRUD(session)
         authenticator = Authenticator(crud)
         if not authenticator.change_user_password(update_user, user):
-            return HTTPException(status.HTTP_401_UNAUTHORIZED)
-    return 'Success'
-        
-
-
-@auth_router.post('/test')
-async def login(user: UserSchemas.Get = Depends(get_current_user_if_active)):
-    pass
+            return HTTPException401
     return user
+        

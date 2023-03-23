@@ -1,13 +1,13 @@
 from unittest import TestCase
 from src.auth.utils import UserCrud, secret_manager, UserDBCRUD
 from src.auth.schemas import UserSchemas
-from src.auth.service import Authenticator
+from src.auth.service import Authenticator, AuthenticationToken
 from src.auth.models import User
 from src.auth.exceptions import HTTPException400
 from src.main import app
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, Response
 from pydantic.error_wrappers import ValidationError
-from ..database import SessionLocal
+from src.database import SessionLocal
 from fastapi.testclient import TestClient
 
 
@@ -41,14 +41,15 @@ class MockUserCrud(UserCrud):
 class AuthTest(TestCase):
     def setUp(self) -> None:
         self.username1 = 'tester'
-        self.password1 = 'mester'
         self.email1 = 'tester@email.com'
-        self.hashedpass1 = '$2b$12$PzNOqIVQ.TaqNNus94N9Zu76hH397sjxTmX9K3VgV2EJ1hoQC08iu'
+        self.plain_password1 = 'test_password'
+        self.hashed_password1 = secret_manager.hash_secret(
+            self.plain_password1)
         self.mock_db = {
             self.username1: {
                 'username': self.username1,
                 'email': self.email1,
-                'hashed_password': self.hashedpass1,
+                'hashed_password': self.hashed_password1,
                 'is_active': True
             }
         }
@@ -57,7 +58,7 @@ class AuthTest(TestCase):
 
     def test_correct_authenticate(self):
         authentication_result = self.authenticator.get_auth_token_or_none(
-            self.username1, self.password1)
+            self.username1, self.plain_password1)
         self.assertNotEqual(authentication_result, None)
 
     def test_incorrect_authentication(self):
@@ -71,17 +72,17 @@ class AuthTest(TestCase):
     def test_unexistsing_user(self):
         try:
             auth_result = self.authenticator.get_auth_token_or_none(
-                'Some_shit', self.password1)
+                'Some_shit', self.plain_password1)
         except HTTPException as exc:
             self.assertEqual(exc.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_try_change_with_correct_password(self):
         new_password_form = UserSchemas.FormPasswordChange(
-            old_password=self.password1, new_password='test_new')
+            old_password=self.plain_password1, new_password='test_new')
         current_user = UserSchemas.Update(
             username=self.username1,
             email=self.email1,
-            password=self.password1,
+            password=self.plain_password1,
             is_active=True,
             id=1
         )
@@ -93,7 +94,7 @@ class AuthTest(TestCase):
             if key in current_user_from_db:
                 self.assertEqual(value, current_user_from_db[key])
         self.assertNotEqual(
-            current_user_from_db['hashed_password'], self.hashedpass1)
+            current_user_from_db['hashed_password'], self.hashed_password1)
 
 
 class TestDBCRUD(TestCase):
@@ -107,11 +108,10 @@ class TestDBCRUD(TestCase):
             is_active=True
         )
         self.session.add(self.user1)
-        self.session.commit()
+        self.session.flush()
 
     def tearDown(self) -> None:
-        self.session.delete(self.user1)
-        self.session.commit()
+        self.session.rollback()
         self.session.close()
 
     def test_get_user_by_username(self):
@@ -138,6 +138,16 @@ class TestDBCRUD(TestCase):
             hahed_password: str = self.crud.get_user_hashed_password_from_username(
                 'NOT EXISTENT SHIT')
 
+    def test_update_user(self):
+        username = self.user1.username
+        user_scheme_to_save = UserSchemas.Update(**self.user1.__dict__)
+        new_email = 'new@mail.ru'
+        user_scheme_to_save.email = new_email
+        self.crud.save_user(user_scheme_to_save)
+        updated_user = self.crud.get_user_by_username(
+            user_scheme_to_save.username)
+        self.assertEqual(updated_user.email, new_email)
+
 
 class TestEndpoints(TestCase):
     def setUp(self) -> None:
@@ -161,15 +171,50 @@ class TestEndpoints(TestCase):
         self.session.close()
 
     def test_authenticate(self):
+        response = self._auntificate(self.user1.username, self.plain_password1)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        dict_response = response.json()
+        recived_token = AuthenticationToken(**dict_response)
+
+    def test_authenticate_incorrect(self):
+        response = self._auntificate(self.user1.username, 'NO no')
+        self.assertTrue(response.is_error)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_non_existent_user(self):
+        response = self._auntificate('blahgassfas saas', 'NO no')
+        self.assertTrue(response.is_error)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_update_password(self):
+        auntif_token: AuthenticationToken = self._get_auntification_token(
+            self.user1.username, self.plain_password1)
+        response = self.client.post(
+            '/authorization',
+            params={'token': auntif_token.access_token},
+            data={
+                "old_password": self.plain_password1,
+                "new_password": "new_password"
+            }, headers={
+                'accept': 'application/json',
+                'Content-Type': 'application/json',
+            })
+        raise Exception('Not ready')
+
+    def _get_auntification_token(self, username: str, password: str) -> AuthenticationToken:
+        response = self._auntificate(username, password)
+        resp_load = response.json()
+        token = AuthenticationToken(**resp_load)
+        return token
+
+    def _auntificate(self, username: str, password: str) -> Response:
         response = self.client.post(
             '/authorization',
             data={
-                'username': self.user1.username,
-                'password': self.plain_password1,
-                'grant_type': self.plain_password1
+                'username': username,
+                'password': password,
+                'grant_type': 'password'
             },
             headers={"content-type": "application/x-www-form-urlencoded"}
         )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        dict_response = response.json()
-        pass
+        return response

@@ -84,8 +84,11 @@ class UserDBCRUD(UserCrud):
     def save_user(self, user_to_save: UserSchemas.Update) -> None:
         current_user: User = self.current_session.query(
             models.User).get(user_to_save.id)
-        for key, value in user_to_save.dict(exclude=['id', 'password']):
-            setattr(current_user, key, value)
-        new_hashed_password = secret_manager.hash_secret(user_to_save.password)
-        current_user.hashed_password = new_hashed_password
-        self.current_session.commit()
+        dict_current_user = user_to_save.dict(exclude={'id', 'hashed_password'}).items()
+        for key, value in dict_current_user:
+            if value is not None:
+                setattr(current_user, key, value)
+        if user_to_save.password is not None:
+            new_hashed_password = secret_manager.hash_secret(user_to_save.password)
+            current_user.hashed_password = new_hashed_password
+        self.current_session.flush()
