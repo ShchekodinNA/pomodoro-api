@@ -22,6 +22,6 @@ database_url = settings.DATABASE_URL
 print(f"{database_url=}")
 engine = create_engine(url=database_url)
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(autocommit=False ,autoflush=False, bind=engine)
 
 Base = declarative_base()

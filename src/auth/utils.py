@@ -7,9 +7,9 @@ from . import models
 from .schemas import UserSchemas
 from .models import User
 from .constants import security_env
-from .exceptions import HTTPException400
+from .exceptions import HTTPException400, HTTPException409
 from jose import jwt
-
+from sqlalchemy.exc import IntegrityError
 
 class _SecretController:
     def __init__(self) -> None:
@@ -60,6 +60,10 @@ class UserCrud(ABC):
     def save_user(self, user_to_save: UserSchemas.Update) -> None:
         pass
 
+    @abstractmethod
+    def create_user(self, user_to_create: UserSchemas.Create) -> None:
+        pass
+
 
 class UserDBCRUD(UserCrud):
 
@@ -84,11 +88,26 @@ class UserDBCRUD(UserCrud):
     def save_user(self, user_to_save: UserSchemas.Update) -> None:
         current_user: User = self.current_session.query(
             models.User).get(user_to_save.id)
-        dict_current_user = user_to_save.dict(exclude={'id', 'hashed_password'}).items()
+        dict_current_user = user_to_save.dict(
+            exclude={'id', 'hashed_password'}).items()
         for key, value in dict_current_user:
             if value is not None:
                 setattr(current_user, key, value)
         if user_to_save.password is not None:
-            new_hashed_password = secret_manager.hash_secret(user_to_save.password)
+            new_hashed_password = secret_manager.hash_secret(
+                user_to_save.password)
             current_user.hashed_password = new_hashed_password
         self.current_session.flush()
+
+    def create_user(self, user_to_create: UserSchemas.Create) -> None:
+        hashed_password = secret_manager.hash_secret(user_to_create.password)
+        new_user = User(
+            username=user_to_create.username,
+            email=user_to_create.email,
+            hashed_password=hashed_password,
+        )
+        self.current_session.add(new_user)
+        try: 
+            self.current_session.flush()
+        except IntegrityError as exc: 
+            raise HTTPException409 from exc

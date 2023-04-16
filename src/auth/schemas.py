@@ -14,9 +14,9 @@ class UserSchemas:
         is_active: bool
 
     class Create(BaseModel):
-        username: str
+        username: str = username_field
         email: str
-        is_active: bool
+        is_active: bool = True
         password: str = password_field
 
     class Update(BaseModel):
